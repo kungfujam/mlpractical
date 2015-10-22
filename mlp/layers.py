@@ -270,16 +270,19 @@ class Softmax(Linear):
     def get_name(self):
         return 'softmax'
     
-    def softmax(self, x):
+    def softmax(self, X):
         ## For matrices
-        # ex = np.exp(X)
-        # tot = np.sum(ex, axis=1, keepdims=True)
-        # assert(tot.shape[0] == ex.shape[0]), \
-        #     "Total of exponents should be size N. Sum size %d, N from X is %d" % (tot.shape[0], ex.shape[0])"
-        # ex / tot
-        ex = numpy.exp(x)
-        tot = numpy.sum(ex)
+        ex = numpy.exp(X)
+        # Hack for a batch of size 1...must be a better way to deal with this
+        if ex.ndim == 1:
+            ex = ex[numpy.newaxis, :]
+        tot = numpy.sum(ex, axis=1, keepdims=True)
+        assert(tot.shape[0] == ex.shape[0]), \
+            "Total of exponents should be size N. Sum size %d, N from X is %d" % (tot.shape[0], ex.shape[0])
         return ex / tot
+#         ex = numpy.exp(x)
+#         tot = numpy.sum(ex)
+#         return ex / tot
     
     def fprop(self, inputs):
         a = super(Softmax, self).fprop(inputs)
@@ -303,5 +306,6 @@ class Softmax(Linear):
             raise NotImplementedError('Linear.bprop_cost method not implemented '
                                       'for the %s cost' % cost.get_name())
         return deltas, ograds
+
 
         
