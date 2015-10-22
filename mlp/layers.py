@@ -5,7 +5,7 @@
 import numpy
 import logging
 from mlp.costs import Cost
-
+from scipy.special import expit
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +280,6 @@ class Sigmoid(Linear):
     # def sigmoid(self, X):
     #     return 1. / (1 + numpy.exp(-X))
     # expit is 10x faster http://stackoverflow.com/questions/21106134/numpy-pure-functions-for-performance-caching
-    from scipy.special import expit
     def sigmoid(self, X):
         return expit(X)
     
@@ -329,18 +328,77 @@ class Sigmoid(Linear):
         
         N.B. da^i/dx^i = d/dx^i (xW^i + b^i) = (W^i).T
         """
-        # h^i = f(a(x)) = sigmoid(a(x)) = sigmoid(xW^i + b^i)
-        # == igrads = da^i/dx^i = d/dx^i (xW^i + b^i) = W^i.T
-        # dh^i/da^i = sigmoid(a^i)(1 - sigmoid(a^i))
-        # deltas = igrads * sigmoid(a^i)(1 - sigmoid(a^i))
-        #        = W^i.T * np.exp(-x^i)(1 + np.exp(-x^i))**(-2)
+        # h = Sigmoid(a) = 1. / (1 + numpy.exp(-a))
+        # dh/da = numpy.exp(-a) / (1 + numpy.exp(-a))**2
+        #       = h(1-h)
+        deltas = igrads * h * (1-h)
+        ograds = deltas.dot(self.W.T)
         
-        ograds = igrads.dot(self.W.T).dot(self.sigmoid_grad())
-        
-        return igrads, ograds
+        return deltas, ograds
 
 
 class Softmax(Linear):
-    def __init__(self):
-        print "Test Softmax"
+    def softmax(self, x):
+        ## For matrices
+        # ex = np.exp(X)
+        # tot = np.sum(ex, axis=1, keepdims=True)
+        # assert(tot.shape[0] == ex.shape[0]), \
+        #     "Total of exponents should be size N. Sum size %d, N from X is %d" % (tot.shape[0], ex.shape[0])"
+        # ex / tot
+        ex = numpy.exp(X)
+        tot = numpy.sum(ex)
+        return ex / tot
+    
+    def fprop(self, inputs):
+        """
+        Implements a forward propagation through the i-th layer, that is
+        some form of:
+           a^i = xW^i + b^i
+           h^i = f^i(a^i)
+        with f^i, W^i, b^i denoting a non-linearity, weight matrix and
+        biases of this (i-th) layer, respectively and x denoting inputs.
+
+        :param inputs: matrix of features (x) or the output of the previous layer h^{i-1}
+        :return: h^i, matrix of transformed by layer features
+        """
+        a = super(Sigmoid, self).fprop(inputs)
+        return self.softmax(a)
+    
+    def bprop(self, h, igrads):
+        """
+        N.B. Using the notation of res/code_scheme.svg
+        * h^i = f(a^i)            : the output of layer i (f is some function) [1 x K^i vector]
+        * x   = h^{i-1}           : the input to layer i (h^0 = first inputs) [1 x K^{i-1} vector]
+        * a^i = x W^i + b^i       : the activation of the layer [1 x K^i vector]
+        * d^i = g^{i+1} dh^i/da^i : \delta for layer i [1 x K^i vector]
+        * g^i = d^i (W^i).T       : the 'grads' for layer i [1 x K^i vector]
+        
+        Implements a backward propagation from a generic layer i+1 to layer i 
+        i.e. we calculate deltas = d^i and ograds = g^i. The deltas will be
+        used to calculate the update gradient of the Error w.r.t. W^i and b^i:
+            dE/dW^i = h^{i-1} d^i
+            dE/dW^i = h^{i-1} d^i
+        The grads propagate the error back to layer i-1 i.e. the ograds from this
+        call are used as igrads for the next.
+
+        :param h      : h^i - Used to create the function dh^i/da^i
+                        ***even if unused, must be present for consistency amongst layers***
+        :param igrads : g^{i+1} - Used to calculate deltas
+            
+        :return: a tuple (deltas, ograds) where:
+            deltas = d^i = igrads  * dh^i/da^i
+                         = g^{i+1} * dh^i/da^i
+            ograds = g^i = dh^i/dx^i
+                         = dh^i/da^i da^i/dx^i
+                         = d^i (W^i).T
+        
+        N.B. da^i/dx^i = d/dx^i (xW^i + b^i) = (W^i).T
+        """
+        # h = Softmax(a) = np.exp(a) / np.sum(np.exp(a))
+        # dh_c/da_k = h_c(\dirac_ck - h_k)
+        
+        deltas = igrads * h * (1-h)
+        ograds = deltas.dot(self.W.T)
+        
+        return deltas, ograds
         
